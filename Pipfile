@@ -1,0 +1,21 @@
+[[source]]
+url = "https://pypi.org/simple"
+verify_ssl = true
+name = "pypi"
+
+[packages]
+fastapi = "*"
+uvicorn = {extras = ["standard"], version = "*"}
+python-dotenv = "*"
+pydantic = "*"
+python-multipart = "*"
+supabase = "*"
+pyjwt = "*"
+multion = "*"
+groq = "*"
+replicate = "*"
+
+[dev-packages]
+
+[requires]
+python_version = "3.11"
