@@ -33,7 +33,8 @@ agent_prompt_generator_prompt = """
 You are an AI agent expert.
 The user has given a command related to some image.
 Generate a prompt for an AI agent to complete the command given the information in the image.
-Only if the image information is completely unusable, output [BAD IMAGE OUTPUT] and ask the user to clarify information about the image.
+If no specific details were mentioned but the image description is usable, still output a prompt.
+If the image information is completely unusable, output [BAD IMAGE OUTPUT] and ask the user to clarify information about the image.
 
 ###
 Examples:
@@ -123,6 +124,9 @@ async def run_chat(
                             "content": "Done",
                         }
                     )
+                    supabase.table("chats").update({"session_id": None}).eq(
+                        "id", id
+                    ).execute()
                     break
 
                 if response.status == "NOT SURE":
@@ -138,14 +142,20 @@ async def run_chat(
                     new_user_message = await websocket.receive_json()
                     messages.append(new_user_message)
                     agent_prompt = new_user_message["content"]
+                    await asyncio.sleep(0)
+                    response = multion.sessions.step(
+                        session_id=session_id,
+                        cmd=agent_prompt,
+                    )
+                    get_screenshot = multion.sessions.screenshot(session_id=session_id)
 
-                await asyncio.sleep(0)
-
-                response = multion.sessions.step(
-                    session_id=session_id,
-                    cmd=agent_prompt,
-                )
-                get_screenshot = multion.sessions.screenshot(session_id=session_id)
+                if response.status == "CONTINUE":
+                    await asyncio.sleep(0)
+                    response = multion.sessions.step(
+                        session_id=session_id,
+                        cmd=agent_prompt,
+                    )
+                    get_screenshot = multion.sessions.screenshot(session_id=session_id)
 
         if message["type"] == "file":
             messages.append(message)
@@ -334,7 +344,7 @@ async def run_chat(
             message["content"] = f"""User: {message["content"]}\nAssistant: """
             messages.append(message)
 
-            chat_prompt = "You are a helpful AI assistant. If the user asks you to accomplish some task, ask them to upload an image first."
+            chat_prompt = "You are a helpful conversational AI assistant. If the user asks you to accomplish some task, ask them to upload an image first so you can take a look. Otherwise, talk to them normally."
             chat_model = LLM(
                 model="llama3-70b-8192",
                 max_tokens=1024,
