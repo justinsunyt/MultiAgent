@@ -33,27 +33,29 @@ async def run_chat_handler(
     id: Annotated[str, Path(description="The ID of the chat to run")],
     user: Annotated[str, Depends(decode_token)],
 ):
+
+    await websocket.accept()
+    uid = user["sub"]
+    chat = get_chat(websocket.app.supabase, id)
+    if not chat:
+        await websocket.close(code=1002, reason="Chat not found")
+    if chat and uid != chat.owner:
+        await websocket.close(code=1003, reason="User is not owner of chat")
     try:
-        await websocket.accept()
-        uid = user["sub"]
-        chat = get_chat(websocket.app.supabase, id)
-        if not chat:
-            raise WebSocketException(code=404, reason="Chat not found")
-        if chat and uid != chat.owner:
-            raise WebSocketException(code=403, reason="User is not owner of chat")
         await run_chat(
             websocket,
             websocket.app.supabase,
             id,
             chat.model,
             chat.messages,
+            chat.session_id,
             uid,
         )
-    except WebSocketDisconnect:
-        print("Websocket disconnected")
+    except WebSocketDisconnect as w:
+        print(w)
     except Exception as e:
         print(e)
-        await websocket.close(code=1008)
+        await websocket.close(code=1011, reason=str(e))
 
 
 @chat_router.post("/create/{model}")

@@ -54,6 +54,7 @@ class Chat(BaseModel):
     model: str
     messages: List[Dict]
     last_chatted: Optional[str]
+    session_id: Optional[str]
 
 
 async def run_chat(
@@ -62,6 +63,7 @@ async def run_chat(
     id: str,
     model: str,
     messages: List[Dict],
+    session_id: Optional[str],
     uid: str,
 ):
 
@@ -69,6 +71,77 @@ async def run_chat(
         token = await websocket.receive_json()
         await decode_token(websocket, token)
         message = await websocket.receive_json()
+        if session_id:
+            print(message["content"])
+            messages.append(message)
+            multion = MultiOn(api_key=os.getenv("MULTION_API_KEY"))
+            agent_prompt = message["content"]
+            response = multion.sessions.step(
+                session_id=session_id,
+                cmd=agent_prompt,
+            )
+            get_screenshot = multion.sessions.screenshot(session_id=session_id)
+
+            while response:
+                print(response.message.strip())
+                print(response.status)
+                print(get_screenshot.screenshot)
+                chat_message = {
+                    "type": "text",
+                    "role": "assistant",
+                    "content": response.message.strip(),
+                }
+                messages.append(chat_message)
+                await websocket.send_json(chat_message)
+                if (
+                    get_screenshot.screenshot
+                    != "Unable to take screenshot for the session"
+                ):
+                    screenshot_message = {
+                        "type": "file",
+                        "role": "assistant",
+                        "content": get_screenshot.screenshot,
+                    }
+                    messages.append(screenshot_message)
+                    await websocket.send_json(screenshot_message)
+
+                date = datetime.now(timezone.utc)
+                supabase.table("chats").update(
+                    {"messages": messages, "last_chatted": date.isoformat()}
+                ).eq("id", id).execute()
+
+                if response.status == "DONE":
+                    await websocket.send_json(
+                        {
+                            "type": "text",
+                            "role": "system",
+                            "content": "Done",
+                        }
+                    )
+                    break
+
+                if response.status == "NOT SURE":
+                    await websocket.send_json(
+                        {
+                            "type": "text",
+                            "role": "system",
+                            "content": "Awaiting input",
+                        }
+                    )
+                    token = await websocket.receive_json()
+                    await decode_token(websocket, token)
+                    new_user_message = await websocket.receive_json()
+                    messages.append(new_user_message)
+                    agent_prompt = new_user_message["content"]
+
+                await asyncio.sleep(0)
+
+                response = multion.sessions.step(
+                    session_id=session_id,
+                    cmd=agent_prompt,
+                )
+                get_screenshot = multion.sessions.screenshot(session_id=session_id)
+
         if message["type"] == "file":
             messages.append(message)
             user_message = await websocket.receive_json()
@@ -76,7 +149,7 @@ async def run_chat(
             messages.append(user_message)
             image_prompt_generator_model = LLM(
                 model="llama3-70b-8192",
-                max_tokens=1000,
+                max_tokens=1024,
                 temperature=0.2,
                 system=image_prompt_generator_prompt,
             )
@@ -117,6 +190,20 @@ async def run_chat(
                         "prompt": image_prompt,
                     },
                 )
+            if model == "llava-13b":
+                stream_output = replicate.run(
+                    "yorickvp/llava-13b:b5f6212d032508382d61ff00469ddda3e32fd8a0e75dc39d8a4191bb742157fb",
+                    input={
+                        "image": image_url,
+                        "prompt": image_prompt,
+                        "top_p": 1,
+                        "max_tokens": 1024,
+                        "temperature": 0.2,
+                    },
+                )
+                image_output = ""
+                for token in stream_output:
+                    image_output += token
             print(f"Image output: {image_output}")
 
             agent_prompt_generator_model = LLM(
@@ -145,21 +232,48 @@ async def run_chat(
             multion = MultiOn(api_key=os.getenv("MULTION_API_KEY"))
             response = multion.sessions.create(url="https://google.com", local=False)
             session_id = response.session_id
+            get_screenshot = multion.sessions.screenshot(session_id=session_id)
+            supabase.table("chats").update({"session_id": session_id}).eq(
+                "id", id
+            ).execute()
+
             while response:
                 print(response.message.strip())
                 print(response.status)
+                print(get_screenshot.screenshot)
                 chat_message = {
                     "type": "text",
                     "role": "assistant",
                     "content": response.message.strip(),
                 }
                 messages.append(chat_message)
-                await websocket.send_json(chat_message)
+                messages.append(screenshot_message)
+                if (
+                    get_screenshot.screenshot
+                    != "Unable to take screenshot for the session"
+                ):
+                    screenshot_message = {
+                        "type": "file",
+                        "role": "assistant",
+                        "content": get_screenshot.screenshot,
+                    }
+                    messages.append(screenshot_message)
+                    await websocket.send_json(screenshot_message)
 
                 date = datetime.now(timezone.utc)
                 supabase.table("chats").update(
                     {"messages": messages, "last_chatted": date.isoformat()}
                 ).eq("id", id).execute()
+
+                if response.status == "DONE":
+                    await websocket.send_json(
+                        {
+                            "type": "text",
+                            "role": "system",
+                            "content": "Done",
+                        }
+                    )
+                    break
 
                 if response.status == "NOT SURE":
                     await websocket.send_json(
@@ -181,6 +295,7 @@ async def run_chat(
                     session_id=session_id,
                     cmd=agent_prompt,
                 )
+                get_screenshot = multion.sessions.screenshot(session_id=session_id)
 
         if message["type"] == "text":
             print(message["content"])
@@ -190,7 +305,7 @@ async def run_chat(
             chat_prompt = "You are a helpful AI assistant. If the user asks you to accomplish some task, ask them to upload an image first."
             chat_model = LLM(
                 model="llama3-70b-8192",
-                max_tokens=1000,
+                max_tokens=1024,
                 temperature=0.2,
                 system=chat_prompt,
             )
