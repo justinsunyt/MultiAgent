@@ -21,10 +21,10 @@ Always ask the model to provide general details if no specific information can b
 ###
 Examples:
 
-User: Schedule meeting based on my texts.
+User: Schedule meeting based on my texts on Google Calendar.
 Prompt: What is the exact meeting date and time agreed upon in the text? Who is this meeting with? What are the general meeting details?
 
-User: Order food.
+User: Order this on Doordash.
 Prompt: What type of food is in the image? List the exact ingredients. If no exact ingredients can be found, describe the general type of food.
 ###
 """
@@ -33,17 +33,22 @@ agent_prompt_generator_prompt = """
 You are an AI agent expert.
 The user has given a command related to some image.
 Generate a prompt for an AI agent to complete the command given the information in the image.
+Only if the image information is completely unusable, output [BAD IMAGE OUTPUT] and ask the user to clarify information about the image.
 
 ###
 Examples:
 
-User: Schedule meeting based on my texts.
+User: Schedule meeting based on my texts on Google Calendar.
 Image: The meeting is scheduled for Tuesday 6 PM with Jason.
 Prompt: Schedule a meeting at 6 PM on Google Calendar and invite Jason.
 
-User: Order food.
+User: Order this on Doordash.
 Image: There is a cheeseburger with a slice of bacon, a meat patty, lettuce, and tomatoes.
 Prompt: Order a cheeseburger on Doordash with a slice of bacon, a meat patty, lettuce, and tomatoes.
+
+User: Order this outfit on Amazon.
+Image: There is a black background.
+Prompt: [BAD IMAGE OUTPUT] What kind of outfit is this?
 ###
 """
 
@@ -182,14 +187,6 @@ async def run_chat(
             os.remove(tmp.name)
             image_url = supabase.storage.from_("images").get_public_url(image_path)
             print(f"Public image URL: {image_url}")
-            if model == "qwen-vl":
-                image_output = replicate.run(
-                    "lucataco/qwen-vl-chat:50881b153b4d5f72b3db697e2bbad23bb1277ab741c5b52d80cd6ee17ea660e9",
-                    input={
-                        "image": image_url,
-                        "prompt": image_prompt,
-                    },
-                )
             if model == "llava-13b":
                 stream_output = replicate.run(
                     "yorickvp/llava-13b:b5f6212d032508382d61ff00469ddda3e32fd8a0e75dc39d8a4191bb742157fb",
@@ -204,6 +201,28 @@ async def run_chat(
                 image_output = ""
                 for token in stream_output:
                     image_output += token
+            if model == "llava-v1.6-34b":
+                stream_output = replicate.run(
+                    "yorickvp/llava-v1.6-34b:41ecfbfb261e6c1adf3ad896c9066ca98346996d7c4045c5bc944a79d430f174",
+                    input={
+                        "image": image_url,
+                        "prompt": image_prompt,
+                        "top_p": 1,
+                        "max_tokens": 1024,
+                        "temperature": 0.2,
+                    },
+                )
+                image_output = ""
+                for token in stream_output:
+                    image_output += token
+            if model == "qwen-vl-chat":
+                image_output = replicate.run(
+                    "lucataco/qwen-vl-chat:50881b153b4d5f72b3db697e2bbad23bb1277ab741c5b52d80cd6ee17ea660e9",
+                    input={
+                        "image": image_url,
+                        "prompt": image_prompt,
+                    },
+                )
             print(f"Image output: {image_output}")
 
             agent_prompt_generator_model = LLM(
@@ -221,6 +240,19 @@ async def run_chat(
                 ]
             )
             print(f"Agent prompt: {agent_prompt}")
+            if agent_prompt.startswith("[BAD IMAGE OUTPUT] "):
+                clarification_message = {
+                    "type": "text",
+                    "role": "assistant",
+                    "content": agent_prompt.lstrip("[BAD IMAGE OUTPUT] "),
+                }
+                messages.append(clarification_message)
+                await websocket.send_json(clarification_message)
+                token = await websocket.receive_json()
+                await decode_token(websocket, token)
+                user_clarification_message = await websocket.receive_json()
+                messages.append(user_clarification_message)
+                agent_prompt = user_clarification_message["content"]
             agent_message = {
                 "type": "text",
                 "role": "assistant",
@@ -247,7 +279,7 @@ async def run_chat(
                     "content": response.message.strip(),
                 }
                 messages.append(chat_message)
-                messages.append(screenshot_message)
+                await websocket.send_json(chat_message)
                 if (
                     get_screenshot.screenshot
                     != "Unable to take screenshot for the session"
