@@ -1,4 +1,4 @@
-# MultiOnChat Web
+# MultiOnChat Platform
 
 [[Video demo]](https://youtu.be/XVZFZJgEtfA)
 
@@ -12,7 +12,7 @@ This is the backend repository for MultiOnChat, check out [multionchat-web](http
 
 ## Features
 
-- Autonomously browse the internet with your own AI agent using only an image and a command - order a Big Mac, schedule events, and shop for outifts!
+- Autonomously browse the internet with your own AI agent using only an image and a command - order a Big Mac, schedule events, and shop for outfits!
 - Supabase database and email authentication with JWT token verification for RLS storage
 - Currently supports llama3-70b, llava-13b, lava-v1.6-34b, qwen-vl-chat
 
