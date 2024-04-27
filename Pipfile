@@ -14,7 +14,7 @@ pyjwt = "*"
 multion = "*"
 groq = "*"
 replicate = "*"
-mangum = "*"
+gunicorn = "*"
 
 [dev-packages]
 
