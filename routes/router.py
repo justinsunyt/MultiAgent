@@ -1,5 +1,5 @@
 from fastapi import APIRouter
-from chat_router import chat_router
+from routes.chat_router import chat_router
 
 
 router = APIRouter(responses={404: {"description": "Not found"}})
