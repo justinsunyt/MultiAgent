@@ -17,4 +17,4 @@ WORKDIR /app
 COPY . /app/
 RUN pip install -r requirements.txt
 
-CMD ["gunicorn", "main:app", "--bind", "[::]:8080", "-k", "uvicorn.workers.UvicornWorker"]
+CMD ["gunicorn", "main:app", "--bind", "[::]:8080", "--timeout", "0", "-k", "uvicorn.workers.UvicornWorker"]
