@@ -1,0 +1,12 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+input[type='file']{
+    opacity: 0;
+    cursor: pointer;
+    width: 44px;
+    height: 40px;
+    font-size: 0;
+    position: absolute;
+}
