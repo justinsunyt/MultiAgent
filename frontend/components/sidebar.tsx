@@ -36,9 +36,9 @@ export default function Sidebar({ models }: { models: string[] }) {
               href="/"
               className="flex justify-start items-center text-xl font-bold text-left px-3"
             >
-              MultiOn
+              Multi
               <span className="bg-clip-text text-transparent bg-gradient-to-r from-green-200 to-blue-400">
-                Chat
+                Agent
               </span>
             </Link>
             <Button

@@ -14,8 +14,9 @@ export const spaceGrotesk = localFont({
 });
 
 export const metadata: Metadata = {
-  title: "MultiOnChat",
-  description: "lol",
+  title: "MultiAgent",
+  description:
+    "Autonomous Web Browsing AI Agent with Vision - powered by MultiOn",
 };
 
 export default async function RootLayout({

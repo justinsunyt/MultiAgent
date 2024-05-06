@@ -51,9 +51,9 @@ export default function HomePage() {
         ) : (
           <motion.div layout className="flex flex-col items-center z-10">
             <div className="flex justify-start items-center text-6xl md:text-7xl font-bold text-left mb-4">
-              MultiOn
+              Multi
               <span className="bg-clip-text text-transparent bg-gradient-to-r from-green-200 to-blue-400">
-                Chat
+                Agent
               </span>
             </div>
             <div className="mb-4 text-base md:text-lg text-center">

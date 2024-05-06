@@ -100,9 +100,9 @@ export default function LoginPage() {
         <Card className="w-[24rem]">
           <form>
             <CardHeader className="text-base md:text-xl font-bold inline-block">
-              {haveAccount ? "Login To " : "Sign Up For "}MultiOn
+              {haveAccount ? "Login To " : "Sign Up For "}Multi
               <span className="bg-clip-text text-transparent bg-gradient-to-r from-green-200 to-blue-400">
-                Chat
+                Agent
               </span>
             </CardHeader>
             <CardContent className="grid w-full items-center gap-4">
