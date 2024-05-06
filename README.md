@@ -4,6 +4,8 @@
 
 Autonomous Web Browsing AI Agent with Vision - powered by MultiOn
 
+_As of May 6, frontend and backend repositories have been merged!_
+
 ## Local setup 💻
 
 ### Prerequisites
