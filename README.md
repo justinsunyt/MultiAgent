@@ -126,11 +126,10 @@ Finally, open [http://localhost:3000](http://localhost:3000) with your browser t
 
 ## What's next? 💪
 
-- Merge frontend and backend repos!
 - Llama tool calling to activate agent whenever appropriate
 - Refine image prompt recursively with Llama
-- Pause button to interrupt agent and prompt new command
 - Chat selection menu to choose between any combination of LLMs and VLMs
+- Toggle MultiOn local mode
 - Deploy! (You will have to use your own API keys)
 
 ## Credits 🙏
