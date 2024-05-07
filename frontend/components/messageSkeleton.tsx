@@ -5,10 +5,12 @@ export default function MessageSkeleton({
   model,
   image,
   agent,
+  paused,
 }: {
   model: string;
   image: boolean;
   agent: boolean;
+  paused: boolean;
 }) {
   return (
     <div className="w-full flex flex-col items-start">
@@ -21,12 +23,17 @@ export default function MessageSkeleton({
           />
         </div>
         <div>{model + " agent"}</div>
+        {paused && (
+          <div className="ml-2 text-xs text-black rounded-full p-2 bg-gradient-to-r from-red-200 to-red-400">
+            Pausing agent
+          </div>
+        )}
         {image && (
           <div className="ml-2 text-xs text-black rounded-full p-2 bg-gradient-to-r from-green-200 to-blue-400">
             Processing image with {model}
           </div>
         )}
-        {agent && !image && (
+        {agent && !paused && (
           <div className="ml-2 text-xs text-black rounded-full p-2 bg-gradient-to-r from-green-200 to-blue-400">
             Processing command with MultiOn agent
           </div>

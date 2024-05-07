@@ -10,7 +10,14 @@ import {
   ChangeEvent,
   useCallback,
 } from "react";
-import { ArrowRight, ChevronDown, ImageUp, Plus, Trash2 } from "lucide-react";
+import {
+  ArrowRight,
+  ChevronDown,
+  ImageUp,
+  Pause,
+  Plus,
+  Trash2,
+} from "lucide-react";
 import Message from "@/components/message";
 import { createClient } from "@/utils/supabase/client";
 import { UserContext } from "@/context/userContext";
@@ -39,19 +46,24 @@ import { useRouter } from "next/navigation";
 import Image from "next/image";
 import { toast } from "sonner";
 import MessageSkeleton from "@/components/messageSkeleton";
+import usePrevious from "@/utils/usePrevious";
 
 export default function ChatPage({ params }: { params: { id: string } }) {
   const [messages, setMessages] = useState<
     { type: string; role: string; content: string }[]
   >([]);
+  const prevMessagesLength = usePrevious(messages.length);
   const { user } = useContext(UserContext);
   const { open } = useContext(SidebarContext);
   const [textInput, setTextInput] = useState("");
   const [imageInput, setImageInput] = useState<File>();
   const [imagePreview, setImagePreview] = useState("");
-  const [agentLoading, setAgentLoading] = useState(false);
   const [messageLoading, setMessageLoading] = useState(false);
+  const [imageMode, setImageMode] = useState(false);
   const [imageLoading, setImageLoading] = useState(false);
+  const [agentMode, setAgentMode] = useState(false);
+  const [agentLoading, setAgentLoading] = useState(false);
+  const [paused, setPaused] = useState(false);
   const websocket = useRef<WebSocket>();
   const connected = useRef(false);
   const scrollRef = useRef<null | HTMLDivElement>(null);
@@ -91,7 +103,38 @@ export default function ChatPage({ params }: { params: { id: string } }) {
 
   useEffect(() => {
     setMessages(chat ? chat.messages : []);
+    setAgentMode(chat && !!chat.session_id);
   }, [chat]);
+
+  useEffect(() => {
+    if (
+      prevMessagesLength &&
+      messages.length >= prevMessagesLength + 2 &&
+      messages[messages.length - 1].type === "file" &&
+      messages[messages.length - 1].role === "assistant" &&
+      websocket.current &&
+      agentLoading
+    ) {
+      const handleContinue = async () => {
+        const token = (await supabase.auth.getSession()).data.session
+          ?.access_token;
+        const tokenMessage = {
+          type: "token",
+          role: "system",
+          content: token,
+        };
+        websocket.current!.send(JSON.stringify(tokenMessage));
+        const continueMessage = {
+          type: "text",
+          role: "system",
+          content: paused ? "Agent pause" : "Agent continue",
+        };
+        websocket.current!.send(JSON.stringify(continueMessage));
+      };
+      handleContinue();
+      setPaused(false);
+    }
+  }, [messages]);
 
   function handleKeyDown(e: KeyboardEvent<HTMLTextAreaElement>) {
     if (e.key === "Enter" && !e.shiftKey) {
@@ -102,44 +145,53 @@ export default function ChatPage({ params }: { params: { id: string } }) {
   function handleSubmit(e: FormEvent) {
     e.preventDefault();
 
-    if (textInput.trim()) {
-      let updatedMessages = [...messages];
-      const inputMessage = {
-        type: "text",
-        role: "user",
-        content: textInput,
-      };
-      if (imageInput) {
-        if (imageInput.size < 10485760) {
-          const reader = new FileReader();
-          reader.onload = () => {
-            const base64data = reader.result as string;
-            const fileMessage = {
-              type: "file",
-              role: "user",
-              content: base64data,
+    if (agentLoading) {
+      setPaused(true);
+    } else {
+      if (textInput.trim()) {
+        let updatedMessages = [...messages];
+        const inputMessage = {
+          type: "text",
+          role: "user",
+          content: textInput,
+        };
+        if (imageInput) {
+          if (imageInput.size < 10485760) {
+            const reader = new FileReader();
+            reader.onload = () => {
+              const base64data = reader.result as string;
+              const fileMessage = {
+                type: "file",
+                role: "user",
+                content: base64data,
+              };
+              updatedMessages.push(fileMessage);
+              updatedMessages.push(inputMessage);
+              setMessages(updatedMessages);
+              handleChat(updatedMessages, !!imageInput);
+              setTextInput("");
+              setImageInput(undefined);
+              setImagePreview("");
+              setImageMode(true);
+              setImageLoading(true);
             };
-            updatedMessages.push(fileMessage);
-            updatedMessages.push(inputMessage);
-            setMessages(updatedMessages);
-            handleChat(updatedMessages, !!imageInput);
-            setTextInput("");
-            setImageInput(undefined);
-            setImagePreview("");
-            setImageLoading(true);
-          };
-          reader.readAsDataURL(imageInput);
+            reader.readAsDataURL(imageInput);
+          } else {
+            toast.error("Image is too big!");
+          }
         } else {
-          toast.error("Image is too big!");
+          updatedMessages.push(inputMessage);
+          setMessages(updatedMessages);
+          handleChat(updatedMessages, !!imageInput);
+          setTextInput("");
+          setImageInput(undefined);
+          setImagePreview("");
+          if (agentMode) {
+            setAgentLoading(true);
+          } else {
+            setMessageLoading(true);
+          }
         }
-      } else {
-        updatedMessages.push(inputMessage);
-        setMessages(updatedMessages);
-        handleChat(updatedMessages, !!imageInput);
-        setTextInput("");
-        setImageInput(undefined);
-        setImagePreview("");
-        setMessageLoading(true);
       }
     }
   }
@@ -164,28 +216,22 @@ export default function ChatPage({ params }: { params: { id: string } }) {
         setAgentLoading(false);
       }
       if (output["content"] === "Agent start") {
+        setAgentMode(true);
         setAgentLoading(true);
       }
       if (output["content"] === "Agent done") {
+        setAgentMode(false);
         setAgentLoading(false);
         toast.success("Request completed");
       }
     } else {
-      if (output["type"] === "file") {
-        const token = (await supabase.auth.getSession()).data.session
-          ?.access_token;
-        websocket.current!.send(JSON.stringify(token));
-        setTimeout(() => {
-          setMessages((latestMessages) => [...latestMessages, output]);
-          setMessageLoading(false);
-          setImageLoading(false);
-        }, 500);
-      } else {
+      setTimeout(() => {
         setMessages((latestMessages) => [...latestMessages, output]);
         setMessageLoading(false);
+        setImageMode(false);
         setImageLoading(false);
         queryClient.refetchQueries({ queryKey: ["chats", chat.model] });
-      }
+      }, 500);
     }
   }
 
@@ -217,7 +263,12 @@ export default function ChatPage({ params }: { params: { id: string } }) {
                   }?token=${encodeURIComponent(token!)}`;
             const ws = new WebSocket(url);
             ws.onopen = () => {
-              ws.send(JSON.stringify(token));
+              const tokenMessage = {
+                type: "token",
+                role: "system",
+                content: token,
+              };
+              ws.send(JSON.stringify(tokenMessage));
               const continueMessage = {
                 type: "text",
                 role: "user",
@@ -256,7 +307,12 @@ export default function ChatPage({ params }: { params: { id: string } }) {
       const ws = new WebSocket(url);
 
       ws.onopen = () => {
-        ws.send(JSON.stringify(token));
+        const tokenMessage = {
+          type: "token",
+          role: "system",
+          content: token,
+        };
+        ws.send(JSON.stringify(tokenMessage));
         if (file) {
           ws.send(JSON.stringify(updatedMessages[updatedMessages.length - 2]));
         }
@@ -265,7 +321,12 @@ export default function ChatPage({ params }: { params: { id: string } }) {
       websocket.current = ws;
       connected.current = true;
     } else {
-      websocket.current!.send(JSON.stringify(token));
+      const tokenMessage = {
+        type: "token",
+        role: "system",
+        content: token,
+      };
+      websocket.current!.send(JSON.stringify(tokenMessage));
       if (file) {
         websocket.current!.send(
           JSON.stringify(updatedMessages[updatedMessages.length - 2])
@@ -352,11 +413,12 @@ export default function ChatPage({ params }: { params: { id: string } }) {
                     key={message["content"] + index}
                   />
                 ))}
-              {(imageLoading || agentLoading || messageLoading) && (
+              {(messageLoading || imageLoading || agentLoading) && (
                 <MessageSkeleton
                   model={chat.model}
-                  image={imageLoading}
-                  agent={agentLoading}
+                  image={imageMode}
+                  agent={agentMode}
+                  paused={paused}
                 />
               )}
             </div>
@@ -399,7 +461,9 @@ export default function ChatPage({ params }: { params: { id: string } }) {
                   variant="ghost"
                   type="button"
                   className="p-0"
-                  disabled={chatLoading || agentLoading || messageLoading}
+                  disabled={
+                    chatLoading || messageLoading || imageLoading || agentMode
+                  }
                 >
                   <ImageUp className="text-zinc-400 m-3" size={20} />
                   <input
@@ -407,7 +471,9 @@ export default function ChatPage({ params }: { params: { id: string } }) {
                     name="file"
                     type="file"
                     accept="image/*"
-                    disabled={chatLoading || agentLoading || messageLoading}
+                    disabled={
+                      chatLoading || messageLoading || imageLoading || agentMode
+                    }
                     onChange={(e) => {
                       if (e.target.files) {
                         let reader = new FileReader();
@@ -430,7 +496,12 @@ export default function ChatPage({ params }: { params: { id: string } }) {
                   onChange={(e) => setTextInput(e.target.value)}
                   onInput={resizeTextarea}
                   onKeyDown={handleKeyDown}
-                  disabled={chatLoading || agentLoading || messageLoading}
+                  disabled={
+                    chatLoading ||
+                    messageLoading ||
+                    imageLoading ||
+                    agentLoading
+                  }
                   placeholder={
                     chatLoading
                       ? "Loading..."
@@ -439,16 +510,19 @@ export default function ChatPage({ params }: { params: { id: string } }) {
                 />
                 <Button
                   disabled={
-                    chatLoading ||
-                    agentLoading ||
-                    messageLoading ||
-                    !textInput.trim()
+                    paused ||
+                    (!agentLoading &&
+                      (chatLoading || messageLoading || !textInput.trim()))
                   }
                   variant="ghost"
                   type="submit"
                   className="p-3"
                 >
-                  <ArrowRight className="text-zinc-400" size={20} />
+                  {agentLoading ? (
+                    <Pause className="text-zinc-400" size={20} />
+                  ) : (
+                    <ArrowRight className="text-zinc-400" size={20} />
+                  )}
                 </Button>
               </motion.div>
             </motion.div>

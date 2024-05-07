@@ -82,6 +82,7 @@ async def run_chat(
         response: SessionStepSuccess,
         get_screenshot: SessionsScreenshotResponse,
         agent_prompt: str,
+        session_id: str,
     ) -> Tuple[SessionStepSuccess, SessionsScreenshotResponse]:
         print(response.message.strip())
         print(response.status)
@@ -107,8 +108,9 @@ async def run_chat(
             {"messages": messages, "last_chatted": date.isoformat()}
         ).eq("id", id).execute()
 
-        token = await websocket.receive_json()
-        await decode_token(websocket, token)
+        token_message = await websocket.receive_json()
+        await decode_token(websocket, token_message["content"])
+        continue_message = await websocket.receive_json()
 
         if response.status == "DONE":
             await websocket.send_json(
@@ -128,11 +130,12 @@ async def run_chat(
                     "content": "Awaiting input",
                 }
             )
-            token = await websocket.receive_json()
-            await decode_token(websocket, token)
+            token_message = await websocket.receive_json()
+            await decode_token(websocket, token_message["content"])
             new_user_message = await websocket.receive_json()
             messages.append(new_user_message)
             agent_prompt = new_user_message["content"]
+            print(agent_prompt)
             await asyncio.sleep(0)
             response = multion.sessions.step(
                 session_id=session_id,
@@ -141,6 +144,21 @@ async def run_chat(
             get_screenshot = multion.sessions.screenshot(session_id=session_id)
 
         if response.status == "CONTINUE":
+            if continue_message["content"] == "Agent pause":
+                print("Agent paused")
+                await websocket.send_json(
+                    {
+                        "type": "text",
+                        "role": "system",
+                        "content": "Awaiting input",
+                    }
+                )
+                token_message = await websocket.receive_json()
+                await decode_token(websocket, token_message["content"])
+                new_user_message = await websocket.receive_json()
+                messages.append(new_user_message)
+                agent_prompt = new_user_message["content"]
+                print(agent_prompt)
             await asyncio.sleep(0)
             response = multion.sessions.step(
                 session_id=session_id,
@@ -151,8 +169,8 @@ async def run_chat(
         return response, get_screenshot
 
     while True:
-        token = await websocket.receive_json()
-        await decode_token(websocket, token)
+        token_message = await websocket.receive_json()
+        await decode_token(websocket, token_message["content"])
         message = await websocket.receive_json()
 
         if session_id:
@@ -176,9 +194,10 @@ async def run_chat(
 
             while response:
                 response, get_screenshot = await handle_response(
-                    response, get_screenshot, agent_prompt
+                    response, get_screenshot, agent_prompt, session_id
                 )
                 if response.status == "DONE":
+                    session_id = None
                     break
 
         if message["type"] == "file":
@@ -282,8 +301,8 @@ async def run_chat(
                 }
                 messages.append(clarification_message)
                 await websocket.send_json(clarification_message)
-                token = await websocket.receive_json()
-                await decode_token(websocket, token)
+                token_message = await websocket.receive_json()
+                await decode_token(websocket, token_message["content"])
                 user_clarification_message = await websocket.receive_json()
                 messages.append(user_clarification_message)
                 agent_prompt = user_clarification_message["content"]
@@ -312,9 +331,10 @@ async def run_chat(
 
             while response:
                 response, get_screenshot = await handle_response(
-                    response, get_screenshot, agent_prompt
+                    response, get_screenshot, agent_prompt, session_id
                 )
                 if response.status == "DONE":
+                    session_id = None
                     break
 
         if message["type"] == "text":
