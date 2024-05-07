@@ -126,7 +126,6 @@ export default function ChatPage({ params }: { params: { id: string } }) {
             setTextInput("");
             setImageInput(undefined);
             setImagePreview("");
-            setAgentLoading(true);
             setImageLoading(true);
           };
           reader.readAsDataURL(imageInput);
@@ -160,30 +159,29 @@ export default function ChatPage({ params }: { params: { id: string } }) {
 
   async function handleMessage(e: MessageEvent) {
     let output = JSON.parse(e.data);
-
     if (output["role"] === "system") {
       if (output["content"] === "Awaiting input") {
         setAgentLoading(false);
       }
-      if (output["content"] === "Done") {
+      if (output["content"] === "Agent start") {
+        setAgentLoading(true);
+      }
+      if (output["content"] === "Agent done") {
         setAgentLoading(false);
         toast.success("Request completed");
       }
     } else {
-      const updateState = (
-        latestMessages: { type: string; role: string; content: string }[]
-      ): { type: string; role: string; content: string }[] => {
-        return [...latestMessages, output];
-      };
       if (output["type"] === "file") {
+        const token = (await supabase.auth.getSession()).data.session
+          ?.access_token;
+        websocket.current!.send(JSON.stringify(token));
         setTimeout(() => {
-          setMessages(updateState);
+          setMessages((latestMessages) => [...latestMessages, output]);
           setMessageLoading(false);
           setImageLoading(false);
-          queryClient.refetchQueries({ queryKey: ["chats", chat.model] });
         }, 500);
       } else {
-        setMessages(updateState);
+        setMessages((latestMessages) => [...latestMessages, output]);
         setMessageLoading(false);
         setImageLoading(false);
         queryClient.refetchQueries({ queryKey: ["chats", chat.model] });
@@ -209,9 +207,14 @@ export default function ChatPage({ params }: { params: { id: string } }) {
           } else {
             const token = (await supabase.auth.getSession()).data.session
               ?.access_token;
-            const url = `wss://${
-              process.env.NEXT_PUBLIC_PLATFORM_URL
-            }/chat/run/${params.id}?token=${encodeURIComponent(token!)}`;
+            const url =
+              process.env.NODE_ENV === "production"
+                ? `wss://${process.env.NEXT_PUBLIC_PLATFORM_URL}/chat/run/${
+                    params.id
+                  }?token=${encodeURIComponent(token!)}`
+                : `ws://127.0.0.1:8000/chat/run/${
+                    params.id
+                  }?token=${encodeURIComponent(token!)}`;
             const ws = new WebSocket(url);
             ws.onopen = () => {
               ws.send(JSON.stringify(token));
@@ -224,7 +227,6 @@ export default function ChatPage({ params }: { params: { id: string } }) {
                 ...latestMessages,
                 continueMessage,
               ]);
-              setAgentLoading(true);
               ws.send(JSON.stringify(continueMessage));
             };
             websocket.current = ws;
@@ -243,9 +245,14 @@ export default function ChatPage({ params }: { params: { id: string } }) {
   ) {
     const token = (await supabase.auth.getSession()).data.session?.access_token;
     if (!connected.current) {
-      const url = `wss://${process.env.NEXT_PUBLIC_PLATFORM_URL}/chat/run/${
-        params.id
-      }?token=${encodeURIComponent(token!)}`;
+      const url =
+        process.env.NODE_ENV === "production"
+          ? `wss://${process.env.NEXT_PUBLIC_PLATFORM_URL}/chat/run/${
+              params.id
+            }?token=${encodeURIComponent(token!)}`
+          : `ws://127.0.0.1:8000/chat/run/${
+              params.id
+            }?token=${encodeURIComponent(token!)}`;
       const ws = new WebSocket(url);
 
       ws.onopen = () => {
@@ -333,7 +340,7 @@ export default function ChatPage({ params }: { params: { id: string } }) {
             <div className="flex flex-col space-y-4">
               {!chatLoading &&
                 user &&
-                messages.map((message) => (
+                messages.map((message, index) => (
                   <Message
                     type={message["type"]}
                     role={message["role"]}
@@ -342,11 +349,15 @@ export default function ChatPage({ params }: { params: { id: string } }) {
                       .replace("\nAssistant: ", "")}
                     model={chat.model}
                     username={user.name}
-                    key={message["content"]}
+                    key={message["content"] + index}
                   />
                 ))}
-              {(agentLoading || messageLoading) && (
-                <MessageSkeleton model={chat.model} image={imageLoading} />
+              {(imageLoading || agentLoading || messageLoading) && (
+                <MessageSkeleton
+                  model={chat.model}
+                  image={imageLoading}
+                  agent={agentLoading}
+                />
               )}
             </div>
             <div className="h-8 shrink-0"></div>
@@ -419,7 +430,7 @@ export default function ChatPage({ params }: { params: { id: string } }) {
                   onChange={(e) => setTextInput(e.target.value)}
                   onInput={resizeTextarea}
                   onKeyDown={handleKeyDown}
-                  disabled={chatLoading}
+                  disabled={chatLoading || agentLoading || messageLoading}
                   placeholder={
                     chatLoading
                       ? "Loading..."

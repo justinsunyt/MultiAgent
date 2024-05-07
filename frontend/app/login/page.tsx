@@ -57,7 +57,10 @@ export default function LoginPage() {
         data: {
           name: formData.get("name") as string,
         },
-        emailRedirectTo: `https://${process.env.NEXT_PUBLIC_PLATFORM_URL}/login?verified=true`,
+        emailRedirectTo:
+          process.env.NODE_ENV === "production"
+            ? `https://${process.env.NEXT_PUBLIC_PLATFORM_URL}/login?verified=true`
+            : `http://localhost:3000/login?verified=true`,
       },
     };
 

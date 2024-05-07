@@ -93,7 +93,7 @@ cd frontend
 ```bash
 NEXT_PUBLIC_SUPABASE_URL="<Supabase project URL>"
 NEXT_PUBLIC_SUPABASE_ANON_KEY="<Supabase anon key>"
-NEXT_PUBLIC_PLATFORM_URL="<localhost:8000 or deployed backend URL>"
+NEXT_PUBLIC_PLATFORM_URL="<deployed backend URL, will only be used in production>"
 ```
 
 3. Install required packages:

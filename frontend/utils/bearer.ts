@@ -6,7 +6,9 @@ export async function fetchBearer(route: string) {
   const token = (await supabase.auth.getSession()).data.session?.access_token;
   try {
     const response = await fetch(
-      `https://${process.env.NEXT_PUBLIC_PLATFORM_URL}${route}`,
+      process.env.NODE_ENV === "production"
+        ? `https://${process.env.NEXT_PUBLIC_PLATFORM_URL}${route}`
+        : `http://127.0.0.1:8000${route}`,
       {
         headers: { Authorization: "Bearer " + token },
       }
@@ -28,7 +30,9 @@ export async function postBearer(route: string, body?: FormData) {
   const token = (await supabase.auth.getSession()).data.session?.access_token;
   try {
     const response = await fetch(
-      `https://${process.env.NEXT_PUBLIC_PLATFORM_URL}${route}`,
+      process.env.NODE_ENV === "production"
+        ? `https://${process.env.NEXT_PUBLIC_PLATFORM_URL}${route}`
+        : `http://127.0.0.1:8000${route}`,
       {
         headers: { Authorization: "Bearer " + token },
         method: "POST",
